@@ -174,19 +174,27 @@ function Items.Metadata(inv, item, metadata, count)
 	---@cast metadata table<string, any>
 
 	if item.weapon then
-		if type(metadata) ~= 'table' then metadata = {} end
-		if not metadata.durability then metadata.durability = 100 end
-		if not metadata.ammo and item.ammoname then metadata.ammo = 0 end
-		if not metadata.components then metadata.components = {} end
-
-		if metadata.registered ~= false and (metadata.ammo or item.name == 'WEAPON_STUNGUN') then
-			local registered = type(metadata.registered) == 'string' and metadata.registered or inv?.player?.name
-			metadata.registered = registered
-			metadata.serial = GenerateSerial(metadata.serial)
-		end
-
-		if item.hash == `WEAPON_PETROLCAN` or item.hash == `WEAPON_HAZARDCAN` or item.hash == `WEAPON_FERTILIZERCAN` or item.hash == `WEAPON_FIREEXTINGUISHER` then
-			metadata.ammo = metadata.durability
+		if item.magazine then
+			if type(metadata) ~= 'table' then metadata = {} end
+			if not metadata.magSize then metadata.magSize = item.magSize end
+			if not metadata.durability then metadata.durability = 1 end
+			if not metadata.ammo and item.ammoname then metadata.ammo = 0 end
+		else
+			if type(metadata) ~= 'table' then metadata = {} end
+			if not metadata.durability then metadata.durability = 100 end
+			if not metadata.ammo and item.ammoname then metadata.ammo = 0 end
+			if not metadata.components then metadata.components = {} end
+			if not metadata.hasMagazine then metadata.hasMagazine = false end
+	
+			if metadata.registered ~= false and (metadata.ammo or item.name == 'WEAPON_STUNGUN') then
+				local registered = type(metadata.registered) == 'string' and metadata.registered or inv?.player?.name
+				metadata.registered = registered
+				
+			end
+	
+			if item.hash == `WEAPON_PETROLCAN` or item.hash == `WEAPON_HAZARDCAN` or item.hash == `WEAPON_FERTILIZERCAN` or item.hash == `WEAPON_FIREEXTINGUISHER` then
+				metadata.ammo = metadata.durability
+			end
 		end
 	else
 		local container = Items.containers[item.name]

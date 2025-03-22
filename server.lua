@@ -366,7 +366,7 @@ end)
 ---@param slot number?
 ---@param metadata { [string]: any }?
 ---@return table | boolean | nil
-lib.callback.register('ox_inventory:useItem', function(source, itemName, slot, metadata, noAnim)
+lib.callback.register('ox_inventory:useItem', function(source, itemName, slot, reload, metadata, noAnim)
 	local inventory = Inventory(source) --[[@as OxInventory]]
 
 	if inventory.player then
@@ -454,7 +454,7 @@ lib.callback.register('ox_inventory:useItem', function(source, itemName, slot, m
             ---@type boolean
 			local success = lib.callback.await('ox_inventory:usingItem', source, data, noAnim)
 
-			if item.weapon then
+			if item.weapon and not reload then
 				inventory.weapon = success and slot or nil
 			end
 

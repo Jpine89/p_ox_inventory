@@ -89,8 +89,8 @@ for type, data in pairs(lib.load('data.weapons') or {}) do
 		else
 			v.stack = true
 		end
-
-		v[type == 'Ammo' and 'ammo' or type == 'Components' and 'component' or type == 'Tints' and 'tint' or 'weapon'] = true
+		
+		v[type == 'Ammo' and 'ammo' or type == 'Components' and 'component' or type == 'Tints' and 'tint'] = true
 
 		if isServer then v.client = nil else
 			v.count = 0
@@ -101,7 +101,7 @@ for type, data in pairs(lib.load('data.weapons') or {}) do
                 clientData.image = setImagePath(clientData.image)
 			end
 		end
-
+		
 		ItemList[k] = v
 	end
 end

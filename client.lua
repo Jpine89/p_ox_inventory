@@ -6,6 +6,16 @@ require 'modules.interface.client'
 local Utils = require 'modules.utils.client'
 local Weapon = require 'modules.weapon.client'
 local currentWeapon
+local prop
+local isReloading = false -- Track if reload is active
+
+-- Loop through all attached entities
+for _, entity in ipairs(GetGamePool("CObject")) do
+    if IsEntityAttachedToEntity(entity, cache.ped) then
+        DetachEntity(entity, true, true) -- Detach the entity
+        DeleteEntity(entity) -- Delete the entity
+    end
+end
 
 exports('getCurrentWeapon', function()
 	return currentWeapon
@@ -442,7 +452,7 @@ local function useItem(data, cb, noAnim)
 
     usingItem = true
     ---@type boolean?
-    result = lib.callback.await('ox_inventory:useItem', 200, data.name, data.slot, slotData.metadata, noAnim)
+    result = lib.callback.await('ox_inventory:useItem', 200, data.name, data.slot, data.reload, slotData.metadata, noAnim)
 
 	if result and cb then
 		local success, response = pcall(cb, result and slotData)
@@ -469,224 +479,342 @@ exports('useItem', useItem)
 
 ---@param slot number
 ---@return boolean?
-local function useSlot(slot, noAnim)
+local function useSlot(slot, noAnim, reload)
 	local item = PlayerData.inventory[slot]
 	if not item then return end
 
 	local data = Items[item.name]
 	if not data then return end
 
-	if canUseItem(data.ammo and true) then
-		if data.component and not currentWeapon then
-			return lib.notify({ id = 'weapon_hand_required', type = 'error', description = locale('weapon_hand_required') })
+	if not canUseItem(data.ammo and true) then return end
+
+	if data.component and not currentWeapon then
+		return lib.notify({ id = 'weapon_hand_required', type = 'error', description = locale('weapon_hand_required') })
+	end
+
+	local durability = item.metadata.durability --[[@as number?]]
+	local consume = data.consume --[[@as number?]]
+	local label = item.metadata.label or item.label --[[@as string]]
+
+	-- Naive durability check to get an early exit
+	-- People often don't call the 'useItem' export and then complain about "broken" items being usable
+	-- This won't work with degradation since we need access to os.time on the server
+	if durability and durability <= 100 and consume then
+		if durability <= 0 then
+			return lib.notify({ type = 'error', description = locale('no_durability', label) })
+		elseif consume ~= 0 and consume < 1 and durability < consume * 100 then
+			return lib.notify({ type = 'error', description = locale('not_enough_durability', label) })
+		end
+	end
+
+	data.slot = slot
+	data.reload = reload
+
+	if reload and item.metadata.ammo ~= nil and item.metadata.ammo <= 0 then return end
+
+	if item.metadata.container then
+		return client.openInventory('container', item.slot)
+	elseif data.client then
+		if invOpen and data.close then client.closeInventory() end
+
+		if data.export then
+			return data.export(data, {name = item.name, slot = item.slot, metadata = item.metadata})
+		elseif data.client.event then -- re-add it, so I don't need to deal with morons taking screenshots of errors when using trigger event
+			return TriggerEvent(data.client.event, data, {name = item.name, slot = item.slot, metadata = item.metadata})
+		end
+	end
+
+	if data.effect then
+		data:effect({name = item.name, slot = item.slot, metadata = item.metadata})
+	elseif data.weapon and not reload then
+		if EnableWeaponWheel or not plyState.canUseWeapons then return end
+		if IsCinematicCamRendering() then SetCinematicModeActive(false) end
+
+		if currentWeapon then
+			if not currentWeapon.timer or currentWeapon.timer ~= 0 then return end
+
+			local weaponSlot = currentWeapon.slot
+			currentWeapon = Weapon.Disarm(currentWeapon)
+
+			if DoesEntityExist(prop) then 
+				DetachEntity(prop, true, true)  -- Detach from the ped
+				DeleteEntity(prop)  -- Delete the prop
+				prop = 0
+			end
+
+			if weaponSlot == data.slot then return end
 		end
 
-		local durability = item.metadata.durability --[[@as number?]]
-		local consume = data.consume --[[@as number?]]
-		local label = item.metadata.label or item.label --[[@as string]]
+		if data.magazine then
+			local boneIndex = 18905  -- Bone index for right hand (57005) (Use 18905 for left hand)
+			-- Load the model before spawning
+			local tempProp = 'w_sb_assaultsmg_mag2'
 
-		-- Naive durability check to get an early exit
-		-- People often don't call the 'useItem' export and then complain about "broken" items being usable
-		-- This won't work with degradation since we need access to os.time on the server
-		if durability and durability <= 100 and consume then
-			if durability <= 0 then
-				return lib.notify({ type = 'error', description = locale('no_durability', label) })
-			elseif consume ~= 0 and consume < 1 and durability < consume * 100 then
-				return lib.notify({ type = 'error', description = locale('not_enough_durability', label) })
+			RequestModel(data.model)
+			while not HasModelLoaded(data.model) do
+				Wait(10)
 			end
+			prop = CreateObject(GetHashKey(data.model), 0.0, 0.0, 0.0, true, true, false)
+			local pos = { x = 0.12, y = 0.085, z = -0.02 }  -- Position offset (X, Y, Z)
+			local rot = { x = -90, y = 90, z = 0 }  -- Rotation (Pitch, Roll, Yaw)
+			AttachEntityToEntity(
+				prop, cache.ped, GetPedBoneIndex(cache.ped, boneIndex),
+				pos.x, pos.y, pos.z,  -- Access position values
+				rot.x, rot.y, rot.z,  -- Access rotation values
+				true, true, false, true, 1, true)
+			SetModelAsNoLongerNeeded(propModel)
+
+		else
+			GiveWeaponToPed(playerPed, data.hash, 0, false, true)
+			SetCurrentPedWeapon(playerPed, data.hash, false)
+	
+			if data.hash ~= GetSelectedPedWeapon(playerPed) then
+				lib.print.info(('failed to equip %s (cause unknown)'):format(item.name))
+				return lib.notify({ type = 'error', description = locale('cannot_use', data.label) })
+			end
+	
+			RemoveWeaponFromPed(cache.ped, data.hash)
 		end
 
-		data.slot = slot
+		useItem(data, function(result)
+			if result then
+				local sleep
+				currentWeapon, sleep = Weapon.Equip(item, data, noAnim)
 
-		if item.metadata.container then
-			return client.openInventory('container', item.slot)
-		elseif data.client then
-			if invOpen and data.close then client.closeInventory() end
-
-			if data.export then
-				return data.export(data, {name = item.name, slot = item.slot, metadata = item.metadata})
-			elseif data.client.event then -- re-add it, so I don't need to deal with morons taking screenshots of errors when using trigger event
-				return TriggerEvent(data.client.event, data, {name = item.name, slot = item.slot, metadata = item.metadata})
+				if sleep then Wait(sleep) end
 			end
-		end
+		end, noAnim)
+	elseif currentWeapon then
+		if data.ammo and currentWeapon.magazine then --need two reload functions. One for Guns, and One for Mags
+			if EnableWeaponWheel then return end
+			local currAmmo = currentWeapon.metadata.ammo
+			local magSize = currentWeapon.metadata.magSize
 
-		if data.effect then
-			data:effect({name = item.name, slot = item.slot, metadata = item.metadata})
-		elseif data.weapon then
-			if EnableWeaponWheel or not plyState.canUseWeapons then return end
+			if(currAmmo == magSize)then return end
 
-			if IsCinematicCamRendering() then SetCinematicModeActive(false) end
 
-			if currentWeapon then
-                if not currentWeapon.timer or currentWeapon.timer ~= 0 then return end
-
-				local weaponSlot = currentWeapon.slot
-				currentWeapon = Weapon.Disarm(currentWeapon)
-
-				if weaponSlot == data.slot then return end
-			end
-
-            GiveWeaponToPed(playerPed, data.hash, 0, false, true)
-            SetCurrentPedWeapon(playerPed, data.hash, false)
-
-            if data.hash ~= GetSelectedPedWeapon(playerPed) then
-                lib.print.info(('failed to equip %s (cause unknown)'):format(item.name))
-                return lib.notify({ type = 'error', description = locale('cannot_use', data.label) })
-            end
-
-            RemoveWeaponFromPed(cache.ped, data.hash)
-
-			useItem(data, function(result)
-				if result then
-                    local sleep
-					currentWeapon, sleep = Weapon.Equip(item, data, noAnim)
-
-					if sleep then Wait(sleep) end
+			useItem(data, function(resp)
+				-- Validate item response
+				if not resp or resp.name ~= currentWeapon.ammo then
+					return
 				end
-			end, noAnim)
-		elseif currentWeapon then
-			if data.ammo then
-				if EnableWeaponWheel or currentWeapon.metadata.durability <= 0 then return end
+		
+				local missingAmmo = magSize - currAmmo
+				local addAmmo = math.min(resp.count, missingAmmo) -- Get the minimum between available and needed ammo
+		
+				isReloading = true -- Set reloading to true
 
-				local clipSize = GetMaxAmmoInClip(playerPed, currentWeapon.hash, true)
-				local currentAmmo = GetAmmoInPedWeapon(playerPed, currentWeapon.hash)
-				local _, maxAmmo = GetMaxAmmo(playerPed, currentWeapon.hash)
+				-- Start a loop to add ammo gradually
+				Citizen.CreateThread(function()
+					while isReloading do
+						local sleep = 4000
 
-				if maxAmmo < clipSize then clipSize = maxAmmo end
+						-- ✅ Define the animation name
+						local animDict = "cover@weapon@reloads@pistol@pistol"
+						local animName = "reload_low_left_long" -- Correct anim name
+						--Utils.PlayAnim(sleep,animDict,animName, 1, 2.5, -1, 50, 0, 0, 0, 0)
+						if not isReloading then break end -- Double-check if reloading was canceled
 
-				if currentAmmo == clipSize then return end
 
-				useItem(data, function(resp)
-					if not resp or resp.name ~= currentWeapon?.ammo then return end
+						if lib.progressCircle({
+							duration = 2000,
+							position = 'bottom',
+							label = 'Packing Mag',
+							useWhileDead = false,
+							canCancel = true,
+							disable = {
+								move = true,
+								car = true,
+								combat = true,
+								mouse = false,
+							},
+							anim = {
+								clip = animName,
+								dict= animDict,
+								flag = 16
+							}
+						})
+						then
+							-- Increase ammo by 1 per loop
+							currAmmo = currAmmo + 1
+							addAmmo = addAmmo - 1
+							currentWeapon.metadata.ammo = currAmmo
+							currentWeapon.metadata.durability = math.floor((currAmmo / magSize) * 100)
+			
 
-					if currentWeapon.metadata.specialAmmo ~= resp.metadata.type and type(currentWeapon.metadata.specialAmmo) == 'string' then
-						local clipComponentKey = ('%s_CLIP'):format(Items[currentWeapon.name].model:gsub('WEAPON_', 'COMPONENT_'))
-						local specialClip = ('%s_%s'):format(clipComponentKey, (resp.metadata.type or currentWeapon.metadata.specialAmmo):upper())
+						else
+							isReloading = false
+						end
 
-						if type(resp.metadata.type) == 'string' then
-							if not HasPedGotWeaponComponent(playerPed, currentWeapon.hash, specialClip) then
-								if not DoesWeaponTakeWeaponComponent(currentWeapon.hash, specialClip) then
-									warn('cannot use clip with this weapon')
-									return
-								end
+						-- Stop if ammo is full or no ammo is left to add
+						if currAmmo >= magSize or addAmmo <= 0 then
+							print('Magazine is full or no more ammo to load.')
+							break
+						end
+					end	
+					
+					-- Update ammo in inventory after each increase
+					lib.callback.await('ox_inventory:updateWeapon', false, 'loadMagazine', currAmmo, false, currentWeapon.metadata.specialAmmo)
+					-- Reset reloading status after loop ends
+					isReloading = false
+				end)
+			end)
+		elseif data.ammo then
+			if EnableWeaponWheel or currentWeapon.metadata.durability <= 0 then return end
 
-								local defaultClip = ('%s_01'):format(clipComponentKey)
+			local clipSize = GetMaxAmmoInClip(playerPed, currentWeapon.hash, true)
+			local currentAmmo = GetAmmoInPedWeapon(playerPed, currentWeapon.hash)
+			local _, maxAmmo = GetMaxAmmo(playerPed, currentWeapon.hash)
 
-								if not HasPedGotWeaponComponent(playerPed, currentWeapon.hash, defaultClip) then
-									warn('cannot use clip with currently equipped clip')
-									return
-								end
+			if maxAmmo < clipSize then clipSize = maxAmmo end
 
-								if currentAmmo > 0 then
-									warn('cannot mix special ammo with base ammo')
-									return
-								end
+			if currentAmmo == clipSize then return end
 
-								currentWeapon.metadata.specialAmmo = resp.metadata.type
+			useItem(data, function(resp)
+				if not resp or resp.name ~= currentWeapon?.ammo then return end
 
-								GiveWeaponComponentToPed(playerPed, currentWeapon.hash, specialClip)
+				if currentWeapon.metadata.specialAmmo ~= resp.metadata.type and type(currentWeapon.metadata.specialAmmo) == 'string' then
+					local clipComponentKey = ('%s_CLIP'):format(Items[currentWeapon.name].model:gsub('WEAPON_', 'COMPONENT_'))
+					local specialClip = ('%s_%s'):format(clipComponentKey, (resp.metadata.type or currentWeapon.metadata.specialAmmo):upper())
+
+					if type(resp.metadata.type) == 'string' then
+						if not HasPedGotWeaponComponent(playerPed, currentWeapon.hash, specialClip) then
+							if not DoesWeaponTakeWeaponComponent(currentWeapon.hash, specialClip) then
+								warn('cannot use clip with this weapon')
+								return
 							end
-						elseif HasPedGotWeaponComponent(playerPed, currentWeapon.hash, specialClip) then
+
+							local defaultClip = ('%s_01'):format(clipComponentKey)
+
+							if not HasPedGotWeaponComponent(playerPed, currentWeapon.hash, defaultClip) then
+								warn('cannot use clip with currently equipped clip')
+								return
+							end
+
 							if currentAmmo > 0 then
 								warn('cannot mix special ammo with base ammo')
 								return
 							end
 
-							currentWeapon.metadata.specialAmmo = nil
+							currentWeapon.metadata.specialAmmo = resp.metadata.type
 
-							RemoveWeaponComponentFromPed(playerPed, currentWeapon.hash, specialClip)
+							GiveWeaponComponentToPed(playerPed, currentWeapon.hash, specialClip)
 						end
+					elseif HasPedGotWeaponComponent(playerPed, currentWeapon.hash, specialClip) then
+						if currentAmmo > 0 then
+							warn('cannot mix special ammo with base ammo')
+							return
+						end
+
+						currentWeapon.metadata.specialAmmo = nil
+
+						RemoveWeaponComponentFromPed(playerPed, currentWeapon.hash, specialClip)
 					end
+				end
 
-					if maxAmmo > clipSize then
-						clipSize = GetMaxAmmoInClip(playerPed, currentWeapon.hash, true)
-					end
+				if maxAmmo > clipSize then
+					clipSize = GetMaxAmmoInClip(playerPed, currentWeapon.hash, true)
+				end
 
-					currentAmmo = GetAmmoInPedWeapon(playerPed, currentWeapon.hash)
-					local missingAmmo = clipSize - currentAmmo
-					local addAmmo = resp.count > missingAmmo and missingAmmo or resp.count
-					local newAmmo = currentAmmo + addAmmo
+				currentAmmo = GetAmmoInPedWeapon(playerPed, currentWeapon.hash)
+				local missingAmmo = clipSize - currentAmmo
+				local addAmmo = resp.count > missingAmmo and missingAmmo or resp.count
+				local newAmmo = currentAmmo + addAmmo
 
-					if newAmmo == currentAmmo then return end
+				if newAmmo == currentAmmo then return end
 
-                    AddAmmoToPed(playerPed, currentWeapon.hash, addAmmo)
+				AddAmmoToPed(playerPed, currentWeapon.hash, addAmmo)
 
-					if cache.vehicle then
-						if cache.seat > -1 or IsVehicleStopped(cache.vehicle) then
-							TaskReloadWeapon(playerPed, true)
-                        else
-                            -- This is a hacky solution for forcing ammo to properly load into the
-                            -- weapon clip while driving; without it, ammo will be added but won't
-                            -- load until the player stops doing anything. i.e. if you keep shooting,
-                            -- the weapon will not reload until the clip empties.
-                            -- And yes - for some reason RefillAmmoInstantly needs to run in a loop.
-                            lib.waitFor(function()
-                                RefillAmmoInstantly(playerPed)
-
-                                local _, ammo = GetAmmoInClip(playerPed, currentWeapon.hash)
-                                return ammo == newAmmo or nil
-                            end)
-                        end
+				if cache.vehicle then
+					if cache.seat > -1 or IsVehicleStopped(cache.vehicle) then
+						TaskReloadWeapon(playerPed, true)
 					else
-						Wait(100)
-						MakePedReload(playerPed)
+						-- This is a hacky solution for forcing ammo to properly load into the
+						-- weapon clip while driving; without it, ammo will be added but won't
+						-- load until the player stops doing anything. i.e. if you keep shooting,
+						-- the weapon will not reload until the clip empties.
+						-- And yes - for some reason RefillAmmoInstantly needs to run in a loop.
+						lib.waitFor(function()
+							RefillAmmoInstantly(playerPed)
 
-						SetTimeout(100, function()
-							while IsPedReloading(playerPed) do
-								DisableControlAction(0, 22, true)
-								Wait(0)
+							local _, ammo = GetAmmoInClip(playerPed, currentWeapon.hash)
+							return ammo == newAmmo or nil
+						end)
+					end
+				else
+					Wait(100)
+					MakePedReload(playerPed)
+
+					SetTimeout(100, function()
+						while IsPedReloading(playerPed) do
+							DisableControlAction(0, 22, true)
+							Wait(0)
+						end
+					end)
+				end
+
+				lib.callback.await('ox_inventory:updateWeapon', false, 'load', newAmmo, false, currentWeapon.metadata.specialAmmo)
+			end)
+		elseif data.reload then
+			useItem(data, function(resp)
+				if (not resp) then return end
+				local currentAmmo = GetAmmoInClip(playerPed, currentWeapon.hash)
+				SetAmmoInClip(playerPed, currentWeapon.hash, 0)
+
+				AddAmmoToPed(playerPed, currentWeapon.hash, resp.metadata.ammo)
+				ClearPedTasks(playerPed) -- Clear any running animation
+				Citizen.Wait(100) -- Small delay before reloading
+				MakePedReload(playerPed)
+
+				currentWeapon.metadata.ammo = resp.metadata.ammo
+				
+				lib.callback.await('ox_inventory:updateWeapon', false, 'load', resp.metadata.ammo, slot, currentWeapon.metadata.specialAmmo)		
+			end)
+		elseif data.component then
+			local components = data.client.component
+
+			if not components then return end
+
+			local componentType = data.type
+			local weaponComponents = PlayerData.inventory[currentWeapon.slot].metadata.components
+
+			-- Checks if the weapon already has the same component type attached
+			for componentIndex = 1, #weaponComponents do
+				if componentType == Items[weaponComponents[componentIndex]].type then
+					return lib.notify({ id = 'component_slot_occupied', type = 'error', description = locale('component_slot_occupied', componentType) })
+				end
+			end
+
+			for i = 1, #components do
+				local component = components[i]
+
+				if DoesWeaponTakeWeaponComponent(currentWeapon.hash, component) then
+					if HasPedGotWeaponComponent(playerPed, currentWeapon.hash, component) then
+						lib.notify({ id = 'component_has', type = 'error', description = locale('component_has', label) })
+					else
+						useItem(data, function(data)
+							if data then
+								local success = lib.callback.await('ox_inventory:updateWeapon', false, 'component', tostring(data.slot), currentWeapon.slot)
+
+								if success then
+									GiveWeaponComponentToPed(playerPed, currentWeapon.hash, component)
+									TriggerEvent('ox_inventory:updateWeaponComponent', 'added', component, data.name)
+								end
 							end
 						end)
 					end
-
-					lib.callback.await('ox_inventory:updateWeapon', false, 'load', newAmmo, false, currentWeapon.metadata.specialAmmo)
-				end)
-			elseif data.component then
-				local components = data.client.component
-
-                if not components then return end
-
-				local componentType = data.type
-				local weaponComponents = PlayerData.inventory[currentWeapon.slot].metadata.components
-
-				-- Checks if the weapon already has the same component type attached
-				for componentIndex = 1, #weaponComponents do
-					if componentType == Items[weaponComponents[componentIndex]].type then
-						return lib.notify({ id = 'component_slot_occupied', type = 'error', description = locale('component_slot_occupied', componentType) })
-					end
+					return
 				end
-
-				for i = 1, #components do
-					local component = components[i]
-
-					if DoesWeaponTakeWeaponComponent(currentWeapon.hash, component) then
-						if HasPedGotWeaponComponent(playerPed, currentWeapon.hash, component) then
-							lib.notify({ id = 'component_has', type = 'error', description = locale('component_has', label) })
-						else
-							useItem(data, function(data)
-								if data then
-									local success = lib.callback.await('ox_inventory:updateWeapon', false, 'component', tostring(data.slot), currentWeapon.slot)
-
-									if success then
-										GiveWeaponComponentToPed(playerPed, currentWeapon.hash, component)
-										TriggerEvent('ox_inventory:updateWeaponComponent', 'added', component, data.name)
-									end
-								end
-							end)
-						end
-						return
-					end
-				end
-				lib.notify({ id = 'component_invalid', type = 'error', description = locale('component_invalid', label) })
-			elseif data.allowArmed then
-				useItem(data)
-            else
-                return lib.notify({ id = 'cannot_perform', type = 'error', description = locale('cannot_perform') })
 			end
-		elseif not data.ammo and not data.component then
+			lib.notify({ id = 'component_invalid', type = 'error', description = locale('component_invalid', label) })
+		elseif data.allowArmed then
 			useItem(data)
+		else
+			return lib.notify({ id = 'cannot_perform', type = 'error', description = locale('cannot_perform') })
 		end
-    end
+	elseif not data.ammo and not data.component then
+		useItem(data)
+	end
 end
 exports('useSlot', useSlot)
 
@@ -832,13 +960,22 @@ local function registerCommands()
 		defaultKey = 'r',
 		onPressed = function(self)
 			if not currentWeapon or EnableWeaponWheel or not canUseItem(true) then return end
+			if currentWeapon.magazine then
+				local slotId = Inventory.GetSlotIdWithItem(currentWeapon.ammo, { type = currentWeapon.metadata.specialAmmo }, false)
 
-			if currentWeapon.ammo then
+				if slotId then
+					useSlot(slotId, nil, true)
+				else
+					lib.notify({ id = 'no_ammo', type = 'error', description = locale('No Ammo Type Exist for Mag', 'No Ammo Type Exist for Mag') })
+				end
+			elseif currentWeapon.ammo then
 				if currentWeapon.metadata.durability > 0 then
-					local slotId = Inventory.GetSlotIdWithItem(currentWeapon.ammo, { type = currentWeapon.metadata.specialAmmo }, false)
-
-					if slotId then
-						useSlot(slotId)
+					local slotId = Inventory.ReturnFirstOrderedItem(currentWeapon.ammo, { type = currentWeapon.metadata.specialAmmo }, false)
+					
+					if slotId ~= nil then
+						useSlot(slotId.slot, nil, true)
+					else
+						lib.notify({ id = 'no_mag', type = 'error', description = locale('No loaded Magazine Exist', '') })
 					end
 				else
 					lib.notify({ id = 'no_durability', type = 'error', description = locale('no_durability', currentWeapon.label) })
@@ -1387,26 +1524,28 @@ RegisterNetEvent('ox_inventory:setPlayerInventory', function(currentDrops, inven
 
 		if EnableWeaponWheel then return end
 
-		local weaponHash = GetSelectedPedWeapon(playerPed)
+		--This need to be looked into. Currently, can't have magazines out with this tied into.
+		--local weaponHash = GetSelectedPedWeapon(playerPed)
+		--print('WeaponHash Pt 1', weaponHash)
+		-- if currentWeapon then
+		-- 	if weaponHash ~= currentWeapon.hash and currentWeapon.timer then
+		-- 		local weaponCount = Items[currentWeapon.name]?.count
 
-		if currentWeapon then
-			if weaponHash ~= currentWeapon.hash and currentWeapon.timer then
-				local weaponCount = Items[currentWeapon.name]?.count
+		-- 		if weaponCount > 0 then
+		-- 			SetCurrentPedWeapon(playerPed, currentWeapon.hash, true)
+		-- 			SetAmmoInClip(playerPed, currentWeapon.hash, currentWeapon.metadata.ammo)
+		-- 			SetPedCurrentWeaponVisible(playerPed, true, false, false, false)
 
-				if weaponCount > 0 then
-					SetCurrentPedWeapon(playerPed, currentWeapon.hash, true)
-					SetAmmoInClip(playerPed, currentWeapon.hash, currentWeapon.metadata.ammo)
-					SetPedCurrentWeaponVisible(playerPed, true, false, false, false)
-
-					weaponHash = GetSelectedPedWeapon(playerPed)
-				end
-
-				if weaponHash ~= currentWeapon.hash then
-                    lib.print.info(('%s was forcibly unequipped (caused by game behaviour or another resource)'):format(currentWeapon.name))
-					currentWeapon = Weapon.Disarm(currentWeapon, true)
-				end
-			end
-		elseif client.weaponmismatch and not client.ignoreweapons[weaponHash] then
+		-- 			weaponHash = GetSelectedPedWeapon(playerPed)
+		-- 		end
+		-- 		print('weaponHash', weaponHash, currentWeapon.hash)
+		-- 		if weaponHash ~= currentWeapon.hash then
+        --             lib.print.info(('%s was forcibly unequipped (caused by game behaviour or another resource)'):format(currentWeapon.name))
+		-- 			currentWeapon = Weapon.Disarm(currentWeapon, true)
+		-- 		end
+		-- 	end
+		-- else
+		if client.weaponmismatch and not client.ignoreweapons[weaponHash] then
 			local weaponType = GetWeapontypeGroup(weaponHash)
 
 			if weaponType ~= 0 and weaponType ~= `GROUP_UNARMED` then

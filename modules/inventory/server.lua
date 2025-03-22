@@ -945,7 +945,7 @@ exports('SetItem', Inventory.SetItem)
 ---@param inv inventory
 function Inventory.GetCurrentWeapon(inv)
 	inv = Inventory(inv) --[[@as OxInventory]]
-
+	
 	if inv?.player then
 		local weapon = inv.items[inv.weapon]
 
@@ -2513,7 +2513,6 @@ local function updateWeapon(source, action, value, slot, specialAmmo)
 	else
 		if not slot then slot = inventory.weapon end
 		local weapon = inventory.items[slot]
-
 		if weapon and weapon.metadata then
 			local item = Items(weapon.name)
 
@@ -2522,7 +2521,21 @@ local function updateWeapon(source, action, value, slot, specialAmmo)
 				return
 			end
 
-			if action == 'load' and weapon.metadata.durability > 0 then
+			if action == 'load' and weapon.magazine and weapon.metadata.durability > 0 then
+				local currentWep = Inventory.GetCurrentWeapon(inventory)
+				local currentWepAmmo = currentWep.metadata.ammo
+				
+				--We pass weapon, to remove the magazine. 
+				if not Inventory.RemoveItem(inventory, weapon, value, specialAmmo, slot, true) then print('shit failed') return end
+				
+				if currentWepAmmo > 0 or currentWep.metadata.hasMagazine then
+					Inventory.AddItem(inventory, item, 1, {ammo = currentWepAmmo, durability = (currentWepAmmo/item.magSize * 100)})
+				end
+				currentWep.metadata.ammo = value
+				currentWep.metadata.hasMagazine = true
+				--weapon.weight = Inventory.SlotWeight(item, weapon)
+				return true
+			elseif action == 'load' and weapon.metadata.durability > 0 then
 				local ammo = Items(weapon.name).ammoname
 				local diff = value - (weapon.metadata.ammo or 0)
 
@@ -2531,6 +2544,16 @@ local function updateWeapon(source, action, value, slot, specialAmmo)
 				weapon.metadata.ammo = value
 				weapon.metadata.specialAmmo = specialAmmo
 				weapon.weight = Inventory.SlotWeight(item, weapon)
+			elseif action == 'loadMagazine' then
+				local ammo = Items(weapon.name).ammoname
+				local diff = value - (weapon.metadata.ammo or 0)
+
+				if not Inventory.RemoveItem(inventory, ammo, diff, specialAmmo) then return end
+
+				weapon.metadata.ammo = value
+				weapon.metadata.specialAmmo = specialAmmo
+				weapon.weight = Inventory.SlotWeight(item, weapon)
+				weapon.metadata.durability = math.floor(value / item.magSize * 100)
 			elseif action == 'throw' then
 				if not Inventory.RemoveItem(inventory, weapon.name, 1, weapon.metadata, weapon.slot) then return end
 			elseif action == 'component' then

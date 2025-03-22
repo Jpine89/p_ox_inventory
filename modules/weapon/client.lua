@@ -44,6 +44,7 @@ function Weapon.Equip(item, data, noWeaponAnim)
 	item.timer = 0
 	item.throwable = data.throwable
 	item.group = GetWeapontypeGroup(item.hash)
+	item.magazine = data.magazine or false
 
 	GiveWeaponToPed(playerPed, data.hash, 0, false, true)
 

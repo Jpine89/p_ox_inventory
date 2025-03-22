@@ -191,6 +191,40 @@ local function assertMetadata(metadata)
     return metadata
 end
 
+---@decription Creates list of item being passed, and returns the highest value.
+---@param itemName string
+---@param metadata? any
+---@param strict? boolean Strictly match metadata properties, otherwise use partial matching.
+---@return SlotWithItem?
+function Inventory.ReturnFirstOrderedItem(itemName, metadata, strict)
+    local inventory = exports.ox_inventory:GetPlayerItems()
+    local item = Items(itemName) --[[@as OxClientItem?]]
+
+    if not inventory or not item then return end
+
+    metadata = assertMetadata(metadata)
+    local tablematch = strict and table.matches or table.contains
+
+    local matchedItems = {}
+
+    -- Collect all matching items
+    for _, slotData in pairs(inventory) do
+        if slotData and slotData.name == item.name and (not metadata or tablematch(slotData.metadata, metadata)) then
+            table.insert(matchedItems, slotData)
+        end
+    end
+
+    if #matchedItems == 0 then return end
+    -- Sort the matched items by ammo in descending order
+    table.sort(matchedItems, function(a, b)
+        return (a.metadata.ammo or 0) > (b.metadata.ammo or 0) -- Ensure ammo is treated as 0 if nil
+    end)
+
+    -- Return the first item in the sorted list
+    return matchedItems[1]
+end
+exports('ReturnFirstOrderedItem', Inventory.ReturnFirstOrderedItem)
+
 ---@param itemName string
 ---@param metadata? any
 ---@param strict? boolean Strictly match metadata properties, otherwise use partial matching.

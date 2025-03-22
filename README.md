@@ -1,3 +1,7 @@
+# WARNING - This is a Modded Version of Ox_Inventory that brings in Magazines to the script. New Features of Ox_inventory may not make their way into this modded version.
+
+
+
 # ox_inventory
 
 A complete inventory system for FiveM, implementing items, weapons, shops, and more without any strict framework dependency.

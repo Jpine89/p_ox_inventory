@@ -7,18 +7,31 @@ return {
 			ammoname = 'ammo-rifle2',
 		},
 
-		['WEAPON_SNOWLAUNCHER'] = {
-			label = 'Snowball Launcher',
-			weight = 1000,
-			durability = 0.03,
-			ammoname = 'WEAPON_SNOWBALL',
+		['magazine-9'] = {
+			label = 'magazine-9',
+			weight = 20,
+			ammoname = 'ammo-9',
+			model = 'w_pi_combatpistol_mag1',
+			client = {
+				image = 'at_clip_extended.png',
+				ammo = 0,
+			},
+			magazine = true,
+			magSize = 20,
 		},
 
 		['WEAPON_TECPISTOL'] = {
 			label = 'Tactical SMG',
 			weight = 1500,
 			durability = 0.075,
-			ammoname = 'ammo-9',
+			ammoname = 'magazine-9',
+		},
+
+		['WEAPON_SNOWLAUNCHER'] = {
+			label = 'Snowball Launcher',
+			weight = 1000,
+			durability = 0.03,
+			ammoname = 'WEAPON_SNOWBALL',
 		},
 
 		['WEAPON_ADVANCEDRIFLE'] = {
