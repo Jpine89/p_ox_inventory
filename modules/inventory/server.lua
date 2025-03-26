@@ -2511,8 +2511,8 @@ local function updateWeapon(source, action, value, slot, specialAmmo)
 			end
 		end
 	else
-		if not slot then slot = inventory.weapon end
-		local weapon = inventory.items[slot]
+		---if not slot then slot = inventory.weapon end
+		local weapon = Inventory.GetCurrentWeapon(inventory)
 		if weapon and weapon.metadata then
 			local item = Items(weapon.name)
 
@@ -2520,30 +2520,35 @@ local function updateWeapon(source, action, value, slot, specialAmmo)
 				inventory.weapon = nil
 				return
 			end
+			
+			if action == 'load' and weapon.metadata.durability > 0 then
+				if not slot then 
+					local ammo = Items(weapon.name).ammoname
+					local diff = value - (weapon.metadata.ammo or 0)
+	
+					if not Inventory.RemoveItem(inventory, ammo, diff, specialAmmo) then print('We Passed a bad value..') return end
+	
+					weapon.metadata.ammo = value
+					weapon.metadata.specialAmmo = specialAmmo
+					weapon.weight = Inventory.SlotWeight(item, weapon)
+				else 
+					local magazine = inventory.items[slot]
+					local ammo = Items(magazine.name)
+					if not ammo.magazine then return false end
 
-			if action == 'load' and weapon.magazine and weapon.metadata.durability > 0 then
-				local currentWep = Inventory.GetCurrentWeapon(inventory)
-				local currentWepAmmo = currentWep.metadata.ammo
-				
-				--We pass weapon, to remove the magazine. 
-				if not Inventory.RemoveItem(inventory, weapon, value, specialAmmo, slot, true) then print('shit failed') return end
-				
-				if currentWepAmmo > 0 or currentWep.metadata.hasMagazine then
-					Inventory.AddItem(inventory, item, 1, {ammo = currentWepAmmo, durability = (currentWepAmmo/item.magSize * 100)})
+					local currentWepAmmo = weapon.metadata.ammo
+					
+					--We pass weapon, to remove the magazine. 
+					if not Inventory.RemoveItem(inventory, ammo, value, specialAmmo, slot, true) then print('shit failed') return end
+					
+					if currentWepAmmo > 0 or weapon.metadata.hasMagazine then
+						Inventory.AddItem(inventory, ammo, 1, {ammo = currentWepAmmo, durability = (currentWepAmmo/magazine.metadata.magSize * 100)})
+					end
+					weapon.metadata.ammo = value
+					weapon.metadata.hasMagazine = true
+					--weapon.weight = Inventory.SlotWeight(item, weapon)
+					return true
 				end
-				currentWep.metadata.ammo = value
-				currentWep.metadata.hasMagazine = true
-				--weapon.weight = Inventory.SlotWeight(item, weapon)
-				return true
-			elseif action == 'load' and weapon.metadata.durability > 0 then
-				local ammo = Items(weapon.name).ammoname
-				local diff = value - (weapon.metadata.ammo or 0)
-
-				if not Inventory.RemoveItem(inventory, ammo, diff, specialAmmo) then return end
-
-				weapon.metadata.ammo = value
-				weapon.metadata.specialAmmo = specialAmmo
-				weapon.weight = Inventory.SlotWeight(item, weapon)
 			elseif action == 'loadMagazine' then
 				local ammo = Items(weapon.name).ammoname
 				local diff = value - (weapon.metadata.ammo or 0)
