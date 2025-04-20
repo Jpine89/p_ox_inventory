@@ -2648,7 +2648,7 @@ lib.callback.register('ox_inventory:removeMagazineFromWeapon', function(source, 
 	if not inventory then return end
 
 	local slotData = inventory.items[slot]
-	if not slotData or not slotData.metadata.ammo or slotData.metadata.ammo < 1 then return end
+	if not slotData or not slotData.metadata.ammo then return end
 
 	local item = Items(slotData.name)
 	if not item or not item.ammoname then return end
