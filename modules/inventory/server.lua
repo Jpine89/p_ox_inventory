@@ -2630,9 +2630,14 @@ lib.callback.register('ox_inventory:removeAmmoFromWeapon', function(source, slot
 	if not item or not item.ammoname then return end
 
 	if Inventory.AddItem(inventory, item.ammoname, slotData.metadata.ammo, { type = slotData.metadata.specialAmmo or nil }) then
+		
 		slotData.metadata.ammo = 0
 		slotData.weight = Inventory.SlotWeight(item, slotData)
 
+		if slotData.metadata.magSize then
+			slotData.metadata.durability = 1
+		end
+		
 		inventory:syncSlotsWithPlayer({
 			{ item = slotData }
 		}, inventory.weight)
