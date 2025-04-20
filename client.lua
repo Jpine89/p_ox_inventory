@@ -767,6 +767,7 @@ local function useSlot(slot, noAnim, reload)
 				MakePedReload(playerPed)
 
 				currentWeapon.metadata.ammo = resp.metadata.ammo
+				currentWeapon.metadata.hasMagazine = true
 				
 				lib.callback.await('ox_inventory:updateWeapon', false, 'load', resp.metadata.ammo, slot, currentWeapon.metadata.specialAmmo)		
 			end)
@@ -1774,13 +1775,22 @@ end)
 RegisterNUICallback('removeAmmo', function(slot, cb)
 	cb(1)
 	local slotData = PlayerData.inventory[slot]
-
 	if not slotData or not slotData.metadata.ammo or slotData.metadata.ammo == 0 then return end
+	local success = false
 
-	local success = lib.callback.await('ox_inventory:removeAmmoFromWeapon', false, slot)
-
-	if success and slot == currentWeapon?.slot then
-		SetPedAmmo(playerPed, currentWeapon.hash, 0)
+	if slotData then
+		if slotData.metadata.hasMagazine then
+			success = lib.callback.await('ox_inventory:removeMagazineFromWeapon', false, slot)
+			if success and slot == currentWeapon?.slot then
+				SetPedAmmo(playerPed, currentWeapon.hash, 0)
+				slotData.metadata.hasMagazine = false
+			end
+		else
+			success = lib.callback.await('ox_inventory:removeAmmoFromWeapon', false, slot)
+			if success and slot == currentWeapon?.slot then
+				SetPedAmmo(playerPed, currentWeapon.hash, 0)
+			end
+		end
 	end
 end)
 

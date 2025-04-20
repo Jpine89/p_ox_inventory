@@ -2643,6 +2643,33 @@ lib.callback.register('ox_inventory:removeAmmoFromWeapon', function(source, slot
 	end
 end)
 
+lib.callback.register('ox_inventory:removeMagazineFromWeapon', function(source, slot)
+	local inventory = Inventory(source)
+	if not inventory then return end
+
+	local slotData = inventory.items[slot]
+	if not slotData or not slotData.metadata.ammo or slotData.metadata.ammo < 1 then return end
+
+	local item = Items(slotData.name)
+	if not item or not item.ammoname then return end
+
+	local magInfo = Items(item.ammoname)
+	local currentWepAmmo = slotData.metadata.ammo
+
+	if Inventory.AddItem(inventory, item.ammoname, 1, {ammo = currentWepAmmo, durability = (currentWepAmmo/magInfo.magSize * 100)}) then
+		slotData.metadata.ammo = 0
+		slotData.weight = Inventory.SlotWeight(item, slotData)
+		slotData.metadata.hasMagazine = false
+		inventory:syncSlotsWithPlayer({
+			{ item = slotData }
+		}, inventory.weight)
+
+		if server.syncInventory then server.syncInventory(inventory) end
+
+		return true
+	end
+end)
+
 local function checkStashProperties(properties)
 	local name = properties.name
 	local slots = properties.slots
