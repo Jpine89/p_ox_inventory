@@ -1778,17 +1778,6 @@ RegisterNUICallback('removeAmmo', function(slot, cb)
 	if not slotData or not slotData.metadata.ammo then return end
 	local success = false
 
-	print('============slotData==========')
-	for x,y in pairs(slotData) do
-		print(x,y)
-	end
-
-	print('============slotData.metadata==========')
-	for x,y in pairs(slotData.metadata) do
-		print(x,y)
-	end
-
-
 	if slotData then
 		if slotData.metadata.hasMagazine then
 			success = lib.callback.await('ox_inventory:removeMagazineFromWeapon', false, slot)
