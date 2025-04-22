@@ -967,16 +967,19 @@ local function registerCommands()
 				if slotId then
 					useSlot(slotId, nil, true)
 				else
-					lib.notify({ id = 'no_ammo', type = 'error', description = locale('No Ammo Type Exist for Mag', 'No Ammo Type Exist for Mag') })
+					lib.notify({ id = 'no_ammo', type = 'error', description = locale('no_ammo', currentWeapon.label) })
 				end
 			elseif currentWeapon.ammo then
 				if currentWeapon.metadata.durability > 0 then
 					local slotId = Inventory.ReturnFirstOrderedItem(currentWeapon.ammo, { type = currentWeapon.metadata.specialAmmo }, false)
-					
+					print('test..', slotId)
 					if slotId ~= nil then
+						print('test..3')
 						useSlot(slotId.slot, nil, true)
 					else
-						lib.notify({ id = 'no_mag', type = 'error', description = locale('No loaded Magazine Exist', '') })
+						print('test..2')
+						print(locale('no_magazine'))
+						lib.notify({ id = 'no_magazine', type = 'error', description = locale('no_magazine', currentWeapon.label) })
 					end
 				else
 					lib.notify({ id = 'no_durability', type = 'error', description = locale('no_durability', currentWeapon.label) })
