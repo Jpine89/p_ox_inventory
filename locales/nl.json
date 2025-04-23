@@ -85,5 +85,8 @@
   "crafting_item": "%s aan het maken",
   "crafting_bench": "Werkbank",
   "open_crafting_bench": "Open Werkbank",
-  "not_enough_durability": "%s heeft niet genoeg levensduur."
+  "not_enough_durability": "%s heeft niet genoeg levensduur.",
+  "pack_magazine": "Magazijn vullen",
+  "no_ammo": "Geen munitie gevonden voor het wapen",
+  "no_bullet": "Geen munitie gevonden voor het magazijn"
 }
