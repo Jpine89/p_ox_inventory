@@ -760,15 +760,19 @@ local function useSlot(slot, noAnim, reload)
 				if (not resp) then return end
 				local currentAmmo = GetAmmoInClip(playerPed, currentWeapon.hash)
 				SetAmmoInClip(playerPed, currentWeapon.hash, 0)
-
-				AddAmmoToPed(playerPed, currentWeapon.hash, resp.metadata.ammo)
 				ClearPedTasks(playerPed) -- Clear any running animation
 				Citizen.Wait(100) -- Small delay before reloading
-				MakePedReload(playerPed)
+				
+				local animDict = "cover@weapon@reloads@pistol@pistol"
+				local animName = "reload_low_left_long" -- Correct anim name
+				Utils.PlayAnim(0, animDict,animName, 1, 2.5, -1, 50, 0, 0, 0, 0)
+				SetAmmoInClip(playerPed, currentWeapon.hash, resp.metadata.ammo)
 
 				currentWeapon.metadata.ammo = resp.metadata.ammo
+				currentWeapon.metadata.hasMagazine = true
 				
-				lib.callback.await('ox_inventory:updateWeapon', false, 'load', resp.metadata.ammo, slot, currentWeapon.metadata.specialAmmo)		
+				lib.callback.await('ox_inventory:updateWeapon', false, 'load', resp.metadata.ammo, slot, currentWeapon.metadata.specialAmmo)
+				ClearPedTasks(playerPed) -- Clear any running animation
 			end)
 		elseif data.component then
 			local components = data.client.component
