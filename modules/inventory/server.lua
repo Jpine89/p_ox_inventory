@@ -2542,10 +2542,11 @@ local function updateWeapon(source, action, value, slot, specialAmmo)
 					if not Inventory.RemoveItem(inventory, ammo, value, specialAmmo, slot, true) then print('shit failed') return end
 					
 					if currentWepAmmo > 0 or weapon.metadata.hasMagazine then
-						Inventory.AddItem(inventory, ammo, 1, {ammo = currentWepAmmo, durability = (currentWepAmmo/magazine.metadata.magSize * 100)})
+						Inventory.AddItem(inventory, weapon.metadata.magazineType, 1, {ammo = currentWepAmmo, durability = (currentWepAmmo/magazine.metadata.magSize * 100)})
 					end
 					weapon.metadata.ammo = value
 					weapon.metadata.hasMagazine = true
+					weapon.metadata.magazineType = ammo
 					--weapon.weight = Inventory.SlotWeight(item, weapon)
 					return true
 				end
@@ -2630,9 +2631,44 @@ lib.callback.register('ox_inventory:removeAmmoFromWeapon', function(source, slot
 	if not item or not item.ammoname then return end
 
 	if Inventory.AddItem(inventory, item.ammoname, slotData.metadata.ammo, { type = slotData.metadata.specialAmmo or nil }) then
+		
 		slotData.metadata.ammo = 0
 		slotData.weight = Inventory.SlotWeight(item, slotData)
 
+		if slotData.metadata.magSize then
+			slotData.metadata.durability = 1
+		end
+
+		inventory:syncSlotsWithPlayer({
+			{ item = slotData }
+		}, inventory.weight)
+
+		if server.syncInventory then server.syncInventory(inventory) end
+
+		return true
+	end
+end)
+
+lib.callback.register('ox_inventory:removeMagazineFromWeapon', function(source, slot)
+	local inventory = Inventory(source)
+	if not inventory then return end
+
+	local slotData = inventory.items[slot]
+	if not slotData or not slotData.metadata.ammo then return end
+
+	local item = Items(slotData.name)
+	if not item or not item.ammoname then return end
+
+	local magInfo = Items(slotData.metadata.magazineType.name)
+	if not magInfo or not magInfo.magSize then return end
+
+	local currentWepAmmo = slotData.metadata.ammo
+
+	if Inventory.AddItem(inventory, slotData.metadata.magazineType, 1, {ammo = currentWepAmmo, durability = (currentWepAmmo/magInfo.magSize * 100)}) then
+		slotData.metadata.ammo = 0
+		slotData.weight = Inventory.SlotWeight(item, slotData)
+		slotData.metadata.hasMagazine = false
+		slotData.metadata.magazineType = nil
 		inventory:syncSlotsWithPlayer({
 			{ item = slotData }
 		}, inventory.weight)

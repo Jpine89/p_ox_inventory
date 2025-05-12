@@ -106,6 +106,33 @@ for type, data in pairs(lib.load('data.weapons') or {}) do
 	end
 end
 
+for type, data in pairs(lib.load('data.magazines') or {}) do
+	for k, v in pairs(data) do
+		v.name = k
+		v.close = type == 'Ammo' and true or false
+        v.weight = v.weight or 0
+		if type == 'Magazines' then
+			---@cast v OxWeapon
+			v.model = v.model or k -- actually weapon type or such? model for compatibility
+			v.hash = joaat(v.model)
+			v.stack = false
+			v.durability = v.durability or 0.05
+			v.weapon = true
+		end
+		
+		if isServer then v.client = nil else
+			v.count = 0
+			v.server = nil
+			local clientData = v.client
+
+			if clientData?.image then
+                clientData.image = setImagePath(clientData.image)
+			end
+		end
+		ItemList[k] = v
+	end
+end
+
 for k, v in pairs(lib.load('data.items') or {}) do
 	v.name = k
 	local success, response = pcall(newItem, v)

@@ -619,7 +619,7 @@ local function useSlot(slot, noAnim, reload)
 						if lib.progressCircle({
 							duration = 2000,
 							position = 'bottom',
-							label = 'Packing Mag',
+							label = locale('pack_magazine'),
 							useWhileDead = false,
 							canCancel = true,
 							disable = {
@@ -970,16 +970,15 @@ local function registerCommands()
 				if slotId then
 					useSlot(slotId, nil, true)
 				else
-					lib.notify({ id = 'no_ammo', type = 'error', description = locale('No Ammo Type Exist for Mag', 'No Ammo Type Exist for Mag') })
+					lib.notify({ id = 'no_bullet', type = 'error', description = locale('no_bullet', currentWeapon.label) })
 				end
 			elseif currentWeapon.ammo then
 				if currentWeapon.metadata.durability > 0 then
 					local slotId = Inventory.ReturnFirstOrderedItem(currentWeapon.ammo, { type = currentWeapon.metadata.specialAmmo }, false)
-					
 					if slotId ~= nil then
 						useSlot(slotId.slot, nil, true)
 					else
-						lib.notify({ id = 'no_mag', type = 'error', description = locale('No loaded Magazine Exist', '') })
+						lib.notify({ id = 'no_ammo', type = 'error', description = locale('no_ammo', currentWeapon.label) })
 					end
 				else
 					lib.notify({ id = 'no_durability', type = 'error', description = locale('no_durability', currentWeapon.label) })
@@ -1778,13 +1777,74 @@ end)
 RegisterNUICallback('removeAmmo', function(slot, cb)
 	cb(1)
 	local slotData = PlayerData.inventory[slot]
+	if not slotData or not slotData.metadata.ammo then return end
+	local success = false
 
-	if not slotData or not slotData.metadata.ammo or slotData.metadata.ammo == 0 then return end
+	if slotData then
+		if slotData.metadata.hasMagazine then
+			success = lib.callback.await('ox_inventory:removeMagazineFromWeapon', false, slot)
+			if success and slot == currentWeapon?.slot then
+				SetPedAmmo(playerPed, currentWeapon.hash, 0)
+				slotData.metadata.hasMagazine = false
+			end
+		else
+			success = lib.callback.await('ox_inventory:removeAmmoFromWeapon', false, slot)
+			if success and slot == currentWeapon?.slot then
+				if slotData.metadata.magSize then
+					slotData.metadata.durability = 1
+				end
+				SetPedAmmo(playerPed, currentWeapon.hash, 0)
+			end
 
-	local success = lib.callback.await('ox_inventory:removeAmmoFromWeapon', false, slot)
-
-	if success and slot == currentWeapon?.slot then
-		SetPedAmmo(playerPed, currentWeapon.hash, 0)
+			-- success = true
+			-- print('im outside..')
+			-- if success and slot == currentWeapon?.slot then
+			-- 	if slotData.metadata.magSize then
+			-- 		local isUnloading = true
+			-- 		local currAmmo = slotData.metadata.ammo
+			-- 		local addAmmo = 0
+			
+			-- 		CreateThread(function()
+			-- 			while isUnloading do
+			-- 				print('im inside..')
+			-- 				if lib.progressCircle({
+			-- 					duration = 500,
+			-- 					label = 'Removing 1 bullet...',
+			-- 					position = 'bottom',
+			-- 					useWhileDead = false,
+			-- 					canCancel = true,
+			-- 					disableUI = true,
+			-- 					disable = {
+			-- 						move = true,
+			-- 						car = true,
+			-- 						mouse = false,
+			-- 						combat = true,
+			-- 					}
+			-- 				}) then
+			-- 					currAmmo = currAmmo - 1
+			-- 					addAmmo = addAmmo + 1
+			-- 					slotData.metadata.ammo = currAmmo
+			-- 					slotData.metadata.durability = math.floor((currAmmo / slotData.metadata.magSize) * 100)
+			-- 					-- Sync metadata to the server
+			-- 					--TriggerServerEvent('your_script:updateAmmoMetadata', slot, slotData.metadata)
+			
+			-- 					if currAmmo <= 0 then
+			-- 						isUnloading = false
+			-- 					end
+			-- 				else
+			-- 					-- Cancelled
+			-- 					isUnloading = false
+			-- 				end
+			-- 			end
+			
+			-- 			-- Out of loop
+			-- 			--cb() -- Respond to NUI callback
+			-- 		end)
+			-- 	end
+			-- 	lib.callback.await('ox_inventory:removeAmmoFromWeapon', false, slot)
+			-- 	SetPedAmmo(playerPed, currentWeapon.hash, 0)
+			end
+		end
 	end
 end)
 

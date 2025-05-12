@@ -198,19 +198,37 @@ end
 ---@return SlotWithItem?
 function Inventory.ReturnFirstOrderedItem(itemName, metadata, strict)
     local inventory = exports.ox_inventory:GetPlayerItems()
-    local item = Items(itemName) --[[@as OxClientItem?]]
-
-    if not inventory or not item then return end
-
-    metadata = assertMetadata(metadata)
-    local tablematch = strict and table.matches or table.contains
-
+    local item = ''
     local matchedItems = {}
+    if type(itemName) == "table" then
+        for x,y in pairs(itemName) do
+            item = Items(y) --[[@as OxClientItem?]]
 
-    -- Collect all matching items
-    for _, slotData in pairs(inventory) do
-        if slotData and slotData.name == item.name and (not metadata or tablematch(slotData.metadata, metadata)) then
-            table.insert(matchedItems, slotData)
+            if not inventory or not item then return end
+
+            metadata = assertMetadata(metadata)
+            local tablematch = strict and table.matches or table.contains
+
+            -- Collect all matching items
+            for _, slotData in pairs(inventory) do
+                if slotData and slotData.name == item.name and (not metadata or tablematch(slotData.metadata, metadata)) then
+                    table.insert(matchedItems, slotData)
+                end
+            end
+        end
+    else
+        item = Items(itemName) --[[@as OxClientItem?]]
+
+        if not inventory or not item then return end
+
+        metadata = assertMetadata(metadata)
+        local tablematch = strict and table.matches or table.contains    
+        
+        -- Collect all matching items
+        for _, slotData in pairs(inventory) do
+            if slotData and slotData.name == item.name and (not metadata or tablematch(slotData.metadata, metadata)) then
+                table.insert(matchedItems, slotData)
+            end
         end
     end
 

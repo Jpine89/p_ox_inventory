@@ -89,5 +89,8 @@
   "crafting_bench": "Crafting Bench",
   "open_crafting_bench": "Open Crafting Bench",
   "not_enough_durability": "%s does not have enough durability",
-  "storage": "Storage"
+  "storage": "Storage",
+  "pack_magazine": "Packing Magazine",
+  "no_ammo": "No ammo found for weapon",
+  "no_bullet": "No Bullet found for Magazine"
 }
